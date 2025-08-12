@@ -20,3 +20,5 @@ EXPOSE 8080
 # Serve FastAPI with Gunicorn/Uvicorn workers
 CMD ["gunicorn", "-k", "uvicorn.workers.UvicornWorker", "main:app", \
      "--bind", "0.0.0.0:8080", "--workers", "2", "--timeout", "120"]
+
+CMD ["bash","-lc","gunicorn -k uvicorn.workers.UvicornWorker main:app -b 0.0.0.0:${PORT} --access-logfile - --error-logfile -"]
