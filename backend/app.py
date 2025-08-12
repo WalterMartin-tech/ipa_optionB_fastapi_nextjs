@@ -27,7 +27,7 @@ except Exception:
     def export_schedule_xlsx(schedule, currency="USD"): return b""
     def export_schedule_pdf(schedule, currency="USD"):  return b""
 
-\1
+
 
 from backend.debug_errors import setup as setup_debug
 setup_debug(app)
