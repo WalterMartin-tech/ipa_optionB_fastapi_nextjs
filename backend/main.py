@@ -3,11 +3,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 
-# --- LeaseInput model (use your real one if present) ---
+# --- LeaseInput (fallback if your models.py isn't ready) ---
 try:
-    from models import LeaseInput  # your own schema
+    from models import LeaseInput
 except Exception:
-    class LeaseInput(BaseModel):   # permissive fallback so app boots
+    class LeaseInput(BaseModel):
         amount: float = 0.0
         currency: str = "USD"
         class Config:
@@ -23,32 +23,47 @@ def _load_build_schedule():
             return {"schedule": [], "note": "placeholder (no engine found)"}
         return _bs
 
-# --- Exporters: use utils_export if you have it; else minimal fallbacks ---
+# Try to use your utils_export helpers; otherwise fall back to minimal exporters.
 try:
-    from utils_export import export_schedule_xlsx, export_schedule_pdf  # your helpers
+    from utils_export import export_schedule_xlsx, export_schedule_pdf
 except Exception:
     def export_schedule_xlsx(schedule, currency="USD"):
-        import io, pandas as pd
+        import io
+        try:
+            import pandas as pd
+        except Exception:
+            buf = io.BytesIO()
+            buf.write(("date,amount,currency\n").encode())
+            for row in schedule:
+                buf.write((f"{row}\n").encode())
+            return buf.getvalue()
         buf = io.BytesIO()
         df = pd.DataFrame(schedule)
-        with pd.ExcelWriter(buf, engine="openpyxl") as w:
-            df.to_excel(w, index=False, sheet_name="Schedule")
+        try:
+            with pd.ExcelWriter(buf, engine="openpyxl") as w:
+                df.to_excel(w, index=False, sheet_name="Schedule")
+        except Exception:
+            return df.to_csv(index=False).encode()
         return buf.getvalue()
+
     def export_schedule_pdf(schedule, currency="USD"):
-        from reportlab.lib.pagesizes import A4
-        from reportlab.pdfgen import canvas
-        import io
-        buf = io.BytesIO()
-        c = canvas.Canvas(buf, pagesize=A4)
-        c.drawString(72, 800, f"Lease schedule ({currency})")
-        y = 780
-        for row in schedule[:50]:
-            c.drawString(72, y, str(row))
-            y -= 14
-            if y < 72:
-                c.showPage(); y = 800
-        c.save()
-        return buf.getvalue()
+        try:
+            from reportlab.lib.pagesizes import A4
+            from reportlab.pdfgen import canvas
+            import io
+            buf = io.BytesIO()
+            c = canvas.Canvas(buf, pagesize=A4)
+            c.drawString(72, 800, f"Lease schedule ({currency})")
+            y = 780
+            for row in schedule[:50]:
+                c.drawString(72, y, str(row))
+                y -= 14
+                if y < 72:
+                    c.showPage(); y = 800
+            c.save()
+            return buf.getvalue()
+        except Exception:
+            return ("\n".join([f"Lease schedule ({currency})"] + [str(r) for r in schedule])).encode()
 
 app = FastAPI(title="IPA API", version="1.0.0")
 
