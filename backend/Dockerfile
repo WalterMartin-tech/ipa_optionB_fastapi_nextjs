@@ -22,4 +22,4 @@ EXPOSE 8080
 
 # Production server: Gunicorn + Uvicorn workers
 
-CMD ["bash","-lc","gunicorn -k uvicorn.workers.UvicornWorker /Users/waltermartin/Desktop/Business/Any Start Up/Projects Python/Lease Cacl Ivory Coast/ipa_optionB_fastapi_nextjs/mainpp --bind 0.0.0.0:${PORT:-8080} --workers 2 --timeout 120"]
+CMD ["bash","-lc","gunicorn -k uvicorn.workers.UvicornWorker main:app --bind 0.0.0.0:${PORT:-8080} --workers 2 --timeout 120"]
