@@ -1,0 +1,31 @@
+%% IPA Calculator — Architecture Diagram (Mermaid)
+flowchart LR
+  user[User (Browser)]
+  subgraph Frontend
+    next[Next.js UI :3000]
+  end
+  subgraph Backend
+    api[(FastAPI Service :8000)]
+    calc[Calculation Engine (Pure Python)]
+    exp[XLSX/PDF Exporters]
+    cors{CORS Middleware}
+  end
+
+  user --> next
+  next -->|HTTP fetch| api
+  api --> calc
+  api -->|Generate| exp
+  api --> health[/GET /health/]
+  api --> calcEP[/POST /calculate/]
+  api --> xlsxEP[/POST /export/xlsx/]
+  api --> pdfEP[/POST /export/pdf/]
+  next -->|Env var| cfg[NEXT_PUBLIC_API_BASE]
+
+  subgraph Dev
+    dev[(Local Dev)]
+  end
+  dev --> next
+  dev --> api
+
+  cloud[Koyeb (Container Runtime)] --- api
+  vercel[Vercel (Target - TBD)] --- next
