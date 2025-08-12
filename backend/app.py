@@ -27,7 +27,13 @@ except Exception:
     def export_schedule_xlsx(schedule, currency="USD"): return b""
     def export_schedule_pdf(schedule, currency="USD"):  return b""
 
-app = FastAPI(title="IPA API", version="1.0.0")
+\1
+
+from backend.debug_errors import setup as setup_debug
+setup_debug(app)
+
+from backend.debug_errors import setup as setup_debug
+setup_debug(app)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000","https://*.vercel.app","https://double-alexia-waltwart-saas-543e51cf.koyeb.app"],
@@ -63,3 +69,11 @@ def export_pdf(payload: LeaseInput):
         media_type="application/pdf",
         headers={"Content-Disposition": 'attachment; filename="schedule.pdf"'}
     )
+
+
+@app.get('/__probe')
+def __probe():
+    return {
+        "debug_errors": os.getenv("DEBUG_ERRORS","0"),
+        "has_handler": True
+    }
