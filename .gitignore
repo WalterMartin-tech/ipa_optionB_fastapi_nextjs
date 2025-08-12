@@ -1,8 +1,11 @@
-.venv/
-frontend/.next/
-frontend/node_modules/
+# macOS
+.DS_Store
+**/.DS_Store
+
+# Python
 __pycache__/
-.venv/
-frontend/.next/
-frontend/node_modules/
-__pycache__/
+*.pyc
+
+# backups / temp
+*.bak
+*.tmp
