@@ -30,3 +30,5 @@ CMD ["bash","-lc","gunicorn -k uvicorn.workers.UvicornWorker main:app -b 0.0.0.0
 CMD ["bash","-lc","gunicorn -k uvicorn.workers.UvicornWorker main:app -b 0.0.0.0:${PORT} --access-logfile - --error-logfile -"]
 
 CMD ["bash","-lc","gunicorn -k uvicorn.workers.UvicornWorker main:app -b 0.0.0.0:${PORT} --access-logfile - --error-logfile -"]
+
+CMD ["bash","-lc","gunicorn -k uvicorn.workers.UvicornWorker backend.app:app -b 0.0.0.0:${PORT} --access-logfile - --error-logfile -"]
