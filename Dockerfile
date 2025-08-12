@@ -28,3 +28,5 @@ COPY . .
 CMD ["bash","-lc","gunicorn -k uvicorn.workers.UvicornWorker main:app -b 0.0.0.0:${PORT} --access-logfile - --error-logfile -"]
 
 CMD ["bash","-lc","gunicorn -k uvicorn.workers.UvicornWorker main:app -b 0.0.0.0:${PORT} --access-logfile - --error-logfile -"]
+
+CMD ["bash","-lc","gunicorn -k uvicorn.workers.UvicornWorker main:app -b 0.0.0.0:${PORT} --access-logfile - --error-logfile -"]
