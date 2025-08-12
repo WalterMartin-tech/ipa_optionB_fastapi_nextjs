@@ -4,7 +4,7 @@ from fastapi.responses import RedirectResponse
 
 # --- import your app logic ---
 from models import LeaseInput
-from services import build_schedule
+# lazy import inside endpoint to avoid boot-time failure
 from exporters.xlsx_exporter import export_schedule_xlsx
 from exporters.pdf_exporter import export_schedule_pdf
 
@@ -32,10 +32,12 @@ def root():
 
 @app.post("/calculate")
 def calculate(payload: LeaseInput):
+    from services import build_schedule
     return build_schedule(payload)
 
 @app.post("/export/xlsx")
 def export_xlsx(payload: LeaseInput):
+    from services import build_schedule
     res = build_schedule(payload)
     data = export_schedule_xlsx(res.schedule, currency=payload.currency)
     return Response(
@@ -46,6 +48,7 @@ def export_xlsx(payload: LeaseInput):
 
 @app.post("/export/pdf")
 def export_pdf(payload: LeaseInput):
+    from services import build_schedule
     res = build_schedule(payload)
     data = export_schedule_pdf(res.schedule, currency=payload.currency)
     return Response(
