@@ -15,4 +15,4 @@ def test_calculate_shape():
     assert r.status_code == 200
     data = r.json()
     assert "totals" in data and isinstance(data["totals"], dict)
-    assert {"example_metric","another"}.issubset(set(data["totals"].keys()))
+    assert {'annuity','ipa_vat','asset_vat','vat_delta'}.issubset(set(data['totals'].keys()))
