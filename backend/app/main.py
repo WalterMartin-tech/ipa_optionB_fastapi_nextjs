@@ -1,7 +1,7 @@
 
 from fastapi import FastAPI, Request, HTTPException, Depends, Header, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, RedirectResponse
 from pydantic import BaseModel
 from typing import Optional
 import io
@@ -114,3 +114,13 @@ async def export_pdf(req: Request, _=Depends(require_auth)):
     buf.seek(0)
     headers = {"Content-Disposition": 'attachment; filename="calculation.pdf"'}
     return StreamingResponse(buf, media_type="application/pdf", headers=headers)
+
+
+# Public (dev-only) endpoint: compute without auth
+@app.post("/calculate_public")
+async def calculate_public(body: Inputs):
+    import os
+    if os.getenv("DEV_ALLOW_PUBLIC_COMPUTE") != "1":
+        raise HTTPException(status_code=404, detail="Not found")
+    return run_calc(body)
+

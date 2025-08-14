@@ -1,0 +1,708 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>IPA Calculator — Ivory Coast (Standalone UI v11.4)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body class="bg-gray-50 text-gray-900">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useEffect, useMemo, useState, useRef } = React;
+
+    /* ---------- utils ---------- */
+    const cn=(...xs)=>xs.filter(Boolean).join(" ");
+    const nf=new Intl.NumberFormat(undefined,{maximumFractionDigits:2});
+    const nf0=new Intl.NumberFormat(undefined,{maximumFractionDigits:0});
+    const fmt=(n,d=2)=> (n===undefined||n===null||Number.isNaN(+n))?"—":(d===0?nf0.format(n):nf.format(n));
+    const toFixed2=(n)=> (n===undefined||Number.isNaN(n)?undefined:Number(Math.round((n+Number.EPSILON)*100)/100));
+    const parseNumber=(v)=>{ if(v===""||v===undefined||v===null) return undefined; const x=Number(String(v).replace(/[^0-9.-]/g,"")); return Number.isNaN(x)?undefined:x; };
+    const formatNumber=(v,d=2)=>{ if(v===""||v===undefined||v===null) return ""; const n=typeof v==="number"?v:Number(String(v).replace(/[^0-9.-]/g,"")); if(Number.isNaN(n)) return ""; return (d===0?nf0:nf).format(n); };
+    const yyyymmdd=d=>`${d.getFullYear()}${String(d.getMonth()+1).padStart(2,"0")}${String(d.getDate()).padStart(2,"0")}`;
+    const yyyymmddFromISO=iso=>{const d=new Date(iso); return Number.isNaN(d.getTime())?"":yyyymmdd(d);};
+    const addMonthsISO=(iso,m,addDays=0)=>{ if(!iso||!m) return ""; const d=new Date(iso+"T00:00:00"); if(Number.isNaN(d)) return ""; const nd=new Date(d); nd.setMonth(nd.getMonth()+m); nd.setDate(nd.getDate()+(addDays||0)); const y=nd.getFullYear(),mm=String(nd.getMonth()+1).padStart(2,"0"),dd=String(nd.getDate()).padStart(2,"0"); return `${y}-${mm}-${dd}`; };
+    const uuid=()=> (crypto.randomUUID?crypto.randomUUID():`id_${Date.now()}_${Math.random().toString(16).slice(2)}`);
+
+    /* ---------- tiny UI ---------- */
+    const Label=({children,className})=><label className={cn("text-sm text-gray-600",className)}>{children}</label>;
+    const Badge=({children,variant="secondary"})=>(
+      <span className={cn(
+        "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs",
+        variant==="secondary"&&"bg-gray-100 text-gray-700",
+        variant==="default"&&"bg-black text-white",
+        variant==="warn"&&"bg-amber-100 text-amber-800",
+        variant==="ok"&&"bg-emerald-100 text-emerald-700",
+        variant==="danger"&&"bg-rose-100 text-rose-700",
+        variant==="info"&&"bg-sky-100 text-sky-800"
+      )}>{children}</span>
+    );
+
+    const Card=React.forwardRef(function Card({children},ref){
+      return <div ref={ref} className="rounded-2xl border border-gray-200 bg-white shadow-sm">{children}</div>;
+    });
+    const CardHeader=({children,className})=><div className={cn("px-4 pt-4",className)}>{children}</div>;
+    const CardTitle=({children,className})=><div className={cn("text-sm font-semibold",className)}>{children}</div>;
+    const CardContent=({children,className})=><div className={cn("px-4 pb-4",className)}>{children}</div>;
+    const Separator=()=> <hr className="border-gray-200" />;
+    const Button=({children,onClick,disabled,className,variant="default",size="md",type="button"})=>(
+      <button type={type} onClick={onClick} disabled={disabled}
+        className={cn("inline-flex items-center justify-center rounded-xl border transition px-3 py-2",
+          variant==="default"&&"bg-black text-white border-transparent",
+          variant==="secondary"&&"bg-gray-100 text-black border-gray-200",
+          variant==="outline"&&"bg-white text-black border-gray-300",
+          size==="sm"&&"text-xs px-2 py-1",
+          disabled&&"opacity-60 cursor-not-allowed",
+          className)}>
+        {children}
+      </button>
+    );
+    const Input=({immutable,warn,className,...props})=>(
+      <input {...props}
+        className={cn("w-full rounded-lg border bg-white px-3 py-2 text-sm",
+          "border-gray-300 focus:outline-none focus:ring-2 focus:ring-black/10",
+          immutable&&"bg-gray-50 text-gray-400 border-gray-200",
+          warn&&"text-rose-600 border-rose-300 placeholder-rose-300 focus:ring-rose-200",
+          className)}/>
+    );
+
+    function SwitchUI({checked,onCheckedChange,disabled,title,size="md"}){
+      const toggle=()=>{ if(disabled) return; onCheckedChange?.(!checked); };
+      const dims=size==="xl"
+        ? {outer:"h-8 w-16", knob:"h-6 w-6", on:"translate-x-9", off:"translate-x-1"}
+        : size==="lg"
+        ? {outer:"h-7 w-[52px]", knob:"h-5 w-5", on:"translate-x-[30px]", off:"translate-x-1"}
+        : {outer:"h-6 w-11", knob:"h-4 w-4", on:"translate-x-6", off:"translate-x-1"};
+      return (
+        <button type="button" onClick={toggle} aria-pressed={!!checked} title={title}
+          className={cn("relative inline-flex items-center rounded-full transition",
+            dims.outer, checked?"bg-black":"bg-gray-300", disabled&&"opacity-60 cursor-not-allowed")}>
+          <span className={cn("inline-block rounded-full bg-white transition", dims.knob, checked?dims.on:dims.off)}/>
+        </button>
+      );
+    }
+
+    const Field=({label,children,hint})=>(
+      <div className="grid grid-cols-1 sm:grid-cols-5 gap-2 items-center">
+        <Label className="sm:col-span-2 text-sm text-gray-600">{label}</Label>
+        <div className="sm:col-span-3 flex flex-col gap-1">{children}{hint&&<span className="text-xs text-gray-500">{hint}</span>}</div>
+      </div>
+    );
+    const formatNum=(v,d=2)=>formatNumber(v,d);
+    const CurrencyInput=({value,onChange,decimals=2,placeholder,disabled,immutable,warn})=>{
+      const [raw,setRaw]=React.useState(value!==undefined?formatNum(value,decimals):"");
+      React.useEffect(()=>{ setRaw(value!==undefined?formatNum(value,decimals):""); },[value,decimals]);
+      return (
+        <Input value={raw} placeholder={placeholder??(decimals===0?"0":"0.00")}
+          onChange={(e)=>{ if(disabled||immutable) return; const v=e.target.value; setRaw(v); onChange(parseNumber(v)); }}
+          onBlur={()=>setRaw(raw===""?"":formatNum(raw,decimals))}
+          onFocus={()=>setRaw(value!==undefined?String(value):"")}
+          inputMode="decimal" disabled={disabled||immutable} immutable={immutable} warn={warn}/>
+      );
+    };
+    const PercentInput=({value,onChange,placeholder,disabled,immutable,warn})=>{
+      const [raw,setRaw]=React.useState(value!==undefined?Number(value).toFixed(2):"");
+      React.useEffect(()=>{ const v=value!==undefined&&!Number.isNaN(value)?Number(value).toFixed(2):""; setRaw(v); },[value]);
+      return (
+        <Input value={raw} placeholder={placeholder??"0.00"}
+          onChange={(e)=>{ if(disabled||immutable) return; setRaw(e.target.value); }}
+          onBlur={()=>{ if(disabled||immutable) return; const p=parseNumber(raw); const f=p===undefined?"":Number(toFixed2(p)).toFixed(2); setRaw(f); onChange(p); }}
+          onKeyDown={(e)=>{ if(e.key==="Enter") e.target.blur(); }}
+          inputMode="decimal" disabled={disabled||immutable} immutable={immutable} warn={warn}/>
+      );
+    };
+    const DecimalInput=({value,onChange,placeholder,disabled,immutable,warn})=>{
+      const [raw,setRaw]=React.useState(value!==undefined?String(value):"");
+      React.useEffect(()=>{ setRaw(value===undefined?"":String(value)); },[value]);
+      return (
+        <Input value={raw} placeholder={placeholder??"0"}
+          onChange={(e)=>{ if(disabled||immutable) return; setRaw(e.target.value); onChange(parseNumber(e.target.value)); }}
+          onBlur={()=>{ if(disabled||immutable) return; const p=parseNumber(raw); setRaw(p===undefined?"":String(p)); onChange(p); }}
+          inputMode="decimal" disabled={disabled||immutable} immutable={immutable} warn={warn}/>
+      );
+    };
+
+    /* ---------- local DB ---------- */
+    const DB_KEY="ipa_db_v11_4";
+    const readDB=()=>{try{const raw=localStorage.getItem(DB_KEY); if(!raw) return {customers:[],calcs:[],globalSeq:0,logs:[]}; const p=JSON.parse(raw); return {customers:p.customers??[],calcs:p.calcs??[],globalSeq:p.globalSeq??0,logs:p.logs??[]};}catch{return {customers:[],calcs:[],globalSeq:0,logs:[]}}}
+    const writeDB=db=>{try{localStorage.setItem(DB_KEY,JSON.stringify(db));}catch{}}
+    const ensureCustomer=name=>{const n=name.trim(); if(!n) return null; const db=readDB(); let c=db.customers.find(x=>x.name===n); if(!c){c={id:uuid(),name:n,createdAt:new Date().toISOString()}; db.customers.push(c); writeDB(db);} return c;};
+    const getCalcsByCustomer=name=>{const db=readDB(); return db.calcs.filter(c=>c.clientName===name.trim()).sort((a,b)=>a.createdAt<b.createdAt?1:-1);};
+    const nextDraftNo=name=>{const list=getCalcsByCustomer(name||""); const max=list.reduce((m,r)=>Math.max(m,r.draftNo||0),0); return (max||0)+1;};
+    const nextIpaSeqForYear=year=>{const db=readDB(); const list=db.calcs.filter(r=>r.stage==="contract"&&r.ipaYear===year); const max=list.reduce((m,r)=>Math.max(m,r.ipaSeq||0),0); return (max||0)+1;};
+    const saveCalculation=rec=>{const dbRaw=readDB(); const now=new Date(); const dateStamp=yyyymmdd(now); const full={...rec,id:uuid(),createdAt:now.toISOString(),dateStamp,globalSeq:(dbRaw.globalSeq||0)+1}; const db={...dbRaw,globalSeq:full.globalSeq,calcs:[...dbRaw.calcs,full]}; ensureCustomer(rec.clientName); writeDB(db); return full;};
+    const appendLog=entry=>{const db=readDB(); const log={id:uuid(),at:new Date().toISOString(),...entry}; writeDB({...db,logs:[log,...(db.logs||[])].slice(0,2000)}); return log;};
+    const readLogs=()=>readDB().logs||[];
+
+    /* ---------- auth ---------- */
+    const AUTH_KEY="ipa_user_v1";
+    const readUser=()=>{try{const raw=localStorage.getItem(AUTH_KEY); if(!raw) return null; return JSON.parse(raw);}catch{return null;}}
+    const logoutUser=()=>{try{localStorage.removeItem(AUTH_KEY);}catch{}}
+    const isExpired=u=>{ if(!u?.issuedAt) return true; const days=(Date.now()-new Date(u.issuedAt))/86400000; return days>90; };
+
+    function LoginPanel({ onClose, onLoggedIn }) {
+      const [email,setEmail]=useState(""); const [password,setPassword]=useState(""); const [role,setRole]=useState("user");
+      const submit=()=>{ if(!email||!password){ alert("Email and password required"); return; } const u={email,role,issuedAt:new Date().toISOString()}; try{localStorage.setItem(AUTH_KEY,JSON.stringify(u));}catch{} onLoggedIn?.(u); onClose?.(); };
+      return (
+        <div className="fixed inset-0 bg-black/30 backdrop-blur-sm grid place-items-center z-50">
+          <div className="bg-white rounded-2xl shadow-xl w-[420px] max-w-[95vw] p-4">
+            <div className="text-sm font-semibold mb-3">Sign in</div>
+            <div className="space-y-3">
+              <div><Label>Email</Label><Input value={email} onChange={(e)=>setEmail(e.target.value)} placeholder="you@company.com"/></div>
+              <div><Label>Password</Label><Input type="password" value={password} onChange={(e)=>setPassword(e.target.value)} placeholder="••••••••"/></div>
+              <div>
+                <Label>Role</Label>
+                <select value={role} onChange={(e)=>setRole(e.target.value)} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm">
+                  <option value="dev">Dev</option><option value="admin">Admin</option><option value="user">User</option>
+                </select>
+                <div className="text-[11px] text-gray-500 mt-1">Password expiry: every 3 months.</div>
+              </div>
+              <div className="flex gap-2 justify-end"><Button variant="outline" onClick={onClose}>Cancel</Button><Button onClick={submit}>Sign in</Button></div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    /* ---------- App ---------- */
+    function App(){
+      const notesRef=useRef(null); const outputRef=useRef(null);
+
+      const [user,setUser]=useState(readUser()); const [showLogin,setShowLogin]=useState(false);
+      useEffect(()=>{ if(user && isExpired(user)){ alert("Password expired. Please login again."); setUser(null); logoutUser(); } },[]);
+      const canEditDefaults=!!user && (user.role==="admin"||user.role==="dev");
+
+      /* scenario */
+      const [calcVersion]=useState("1.0.0");
+      const [clientName,setClientName]=useState("");
+      const [operator,setOperator]=useState("");
+      const [stage,setStage]=useState("pre");
+      const [draftNo,setDraftNo]=useState(1);
+      const [draftStatus,setDraftStatus]=useState("in_review");
+      useEffect(()=>{ if(clientName.trim()) setDraftNo(nextDraftNo(clientName)); else setDraftNo(1); },[clientName]);
+
+      const [defaultsLocked,setDefaultsLocked]=useState(true);
+      const [currency,setCurrency]=useState("XOF");
+      const decimals=useMemo(()=>currency==="XOF"?0:2,[currency]);
+
+      /* asset & dates */
+      const [assetGross,setAssetGross]=useState();
+      const [vatRate,setVatRate]=useState(18.0);
+      const assetNet=useMemo(()=> (assetGross===undefined||vatRate===undefined)?undefined:toFixed2(assetGross/(1+(vatRate||0)/100)),[assetGross,vatRate]);
+      const vatAbs=useMemo(()=> (assetGross===undefined||assetNet===undefined)?undefined:toFixed2(assetGross-assetNet),[assetGross,assetNet]);
+
+      const [downAmt,setDownAmt]=useState(); const [downPct,setDownPct]=useState(); const [lastEditedDP,setLastEditedDP]=useState();
+      const [balloonAmt,setBalloonAmt]=useState(); const [balloonPct,setBalloonPct]=useState(); const [lastEditedBalloon,setLastEditedBalloon]=useState();
+
+      const [downDate,setDownDate]=useState(""); const [deliveryDate,setDeliveryDate]=useState(""); const [startDate,setStartDate]=useState("");
+      const [signingDate,setSigningDate]=useState(""); const [plannedPaymentDate,setPlannedPaymentDate]=useState(""); const [balloonDate,setBalloonDate]=useState("");
+      const [balloonAuto,setBalloonAuto]=useState(true); const [tenureMonths,setTenureMonths]=useState(); const [graceMonths,setGraceMonths]=useState();
+
+      useEffect(()=>{ if(!assetGross) return;
+        if(lastEditedDP==="amount" && downAmt!==undefined) setDownPct(toFixed2((downAmt/assetGross)*100));
+        else if(lastEditedDP==="percent" && downPct!==undefined) setDownAmt(toFixed2((downPct/100)*assetGross));
+      },[downAmt,downPct,lastEditedDP,assetGross]);
+      useEffect(()=>{ if(!assetGross) return;
+        if(lastEditedBalloon==="amount" && balloonAmt!==undefined) setBalloonPct(toFixed2((balloonAmt/assetGross)*100));
+        else if(lastEditedBalloon==="percent" && balloonPct!==undefined) setBalloonAmt(toFixed2((balloonPct/100)*assetGross));
+      },[balloonAmt,balloonPct,lastEditedBalloon,assetGross]);
+      useEffect(()=>{ if(balloonAuto && startDate && tenureMonths){ const iso=addMonthsISO(startDate,tenureMonths,5); if(iso) setBalloonDate(iso); } },[balloonAuto,startDate,tenureMonths]);
+
+      /* rates & TSFs */
+      const [rc,setRc]=useState(18.0); const [rf,setRf]=useState(6.0); const [discountedRate,setDiscountedRate]=useState();
+      const [tseRate,setTseRate]=useState(0.1); const [loanRegRate,setLoanRegRate]=useState(1.0);
+      const [taxAuthPledgeAmt,setTaxAuthPledgeAmt]=useState(25000); const [stampDutyAmt,setStampDutyAmt]=useState(30000);
+      const [onlineRegAmt,setOnlineRegAmt]=useState(6650); const [filingMinutesAmt,setFilingMinutesAmt]=useState(5000);
+      const [teeRate,setTeeRate]=useState(5.0); const [ircRate,setIrcRate]=useState(18.0);
+      const [courtPledgeRate,setCourtPledgeRate]=useState(0.02); const [courtPledgeMultiplier,setCourtPledgeMultiplier]=useState(1.5);
+      const [bankingFeeRate,setBankingFeeRate]=useState(2.6);
+      const [motorPremiumY1,setMotorPremiumY1]=useState(); const [motorPremiumY2Plus,setMotorPremiumY2Plus]=useState();
+      const [telematicsCapex,setTelematicsCapex]=useState(58500); const [telematicsMonthly,setTelematicsMonthly]=useState(10000);
+      const [teeApplicable,setTeeApplicable]=useState(true);
+
+      const [internalNotes,setInternalNotes]=useState("");
+
+      const [creditFacilityPreview,setCreditFacilityPreview]=useState({amount:undefined,parts:[],status:"pending"});
+      const [outputNote,setOutputNote]=useState("Run Compute (preview) to refresh.");
+      const [selectedCustomer,setSelectedCustomer]=useState("");
+      const [dbNonce,setDbNonce]=useState(0);
+      const customers=useMemo(()=>readDB().customers,[dbNonce]);
+
+      const errors=useMemo(()=>{ const e={}; const req=(c,k)=>{if(!c) e[k]="Required"}; const nonneg=(v,k)=>{ if(v!==undefined&&v<0) e[k]="≥ 0"; };
+        req(assetGross!==undefined,"assetGross"); req(vatRate!==undefined,"vatRate"); req(rc!==undefined,"rc"); req(rf!==undefined,"rf"); req(tenureMonths!==undefined,"tenureMonths"); req(startDate,"startDate");
+        [assetGross,assetNet,vatRate,rc,rf,discountedRate,downAmt,downPct,balloonAmt,balloonPct,tenureMonths,graceMonths,tseRate,loanRegRate,taxAuthPledgeAmt,stampDutyAmt,onlineRegAmt,filingMinutesAmt,teeRate,ircRate,courtPledgeRate,courtPledgeMultiplier,bankingFeeRate,motorPremiumY1,motorPremiumY2Plus,telematicsCapex,telematicsMonthly].forEach((v,i)=>nonneg(v,`n${i}`));
+        return e;
+      },[assetGross,assetNet,vatRate,rc,rf,discountedRate,downAmt,downPct,balloonAmt,balloonPct,tenureMonths,graceMonths,tseRate,loanRegRate,taxAuthPledgeAmt,stampDutyAmt,onlineRegAmt,filingMinutesAmt,teeRate,ircRate,courtPledgeRate,courtPledgeMultiplier,bankingFeeRate,motorPremiumY1,motorPremiumY2Plus,telematicsCapex,telematicsMonthly,startDate]);
+      const missing=k=>!!errors[k];
+
+      const dualIdPreview=useMemo(()=>{ const db=readDB(); const ds=yyyymmdd(new Date()); const next=(db.globalSeq||0)+1; return `#${draftNo} • ${ds}_${next}`; },[draftNo,dbNonce]);
+      const ipaNumberPreview=useMemo(()=>{ if(stage!=="contract") return undefined; const y=startDate?new Date(startDate+"T00:00:00").getFullYear():new Date().getFullYear(); const seq=nextIpaSeqForYear(y); return `IPA-${y}/${seq}`; },[stage,startDate,dbNonce]);
+      const stageLabel=useMemo(()=> stage==="pre"?`Pre-contract (Draft #${draftNo})`:stage==="contract"?"Contract (contractual version)":"Lifetime (restructuring)",[stage,draftNo]);
+
+      const computeX=(gross,dpAmt,dpPct)=>{ if(gross===undefined) return undefined; const dp=dpAmt ?? (dpPct!==undefined?toFixed2((dpPct/100)*gross):undefined); return dp===undefined?undefined:toFixed2(gross-dp); };
+
+      function computePreview(){
+        const X=computeX(assetGross,downAmt,downPct);
+        const G=toFixed2(taxAuthPledgeAmt||0), H=toFixed2(stampDutyAmt||0), I=toFixed2(onlineRegAmt||0), J=toFixed2(filingMinutesAmt||0);
+        const P=toFixed2(motorPremiumY1||0), Q=toFixed2(telematicsCapex||0);
+        const parts=[
+          {code:"X",label:"Asset (incl. VAT) − Down Payment",value:X,basis:"Gross − DP",status:X!==undefined?"ok":"pending"},
+          {code:"G",label:"TAPR",value:G,basis:"25,000",status:"ok"},
+          {code:"H",label:"Stamp Duty",value:H,basis:"30,000",status:"ok"},
+          {code:"I",label:"Online Registration",value:I,basis:"6,650",status:"ok"},
+          {code:"J",label:"Filing Minutes",value:J,basis:"5,000",status:"ok"},
+          {code:"K",label:"Court Pledge",value:undefined,basis:"0.02% × 1.5 × e",status:"pending"},
+          {code:"F",label:"TSE",value:undefined,basis:"0.1% × d",status:"pending"},
+          {code:"L",label:"TEE (if applicable)",value:teeApplicable?undefined:0,basis:teeApplicable?"5% × e":"not applicable",status:teeApplicable?"pending":"ok"},
+          {code:"M",label:"Loan Registration",value:undefined,basis:"1% × (b + f), b = g",status:"pending"},
+          {code:"P",label:"Motor Insurance Y1",value:P,basis:"Capitalized",status:motorPremiumY1!==undefined?"ok":"info"},
+          {code:"Q",label:"Telematics Equip & Install",value:Q,basis:"58,500",status:"ok"},
+          {code:"f",label:"VAT Delta",value:undefined,basis:"VAT(IPA) − VAT(Asset)",status:"pending"},
+        ];
+        const known=parts.reduce((s,p)=>s+(typeof p.value==="number"?p.value:0),0);
+        setCreditFacilityPreview({amount:toFixed2(known),parts,status:parts.some(p=>p.value===undefined)?"pending":"ok"});
+        setOutputNote("Basic checks done. %-based and equilibrium items compute when pricing engine exposes d/e/c/f (with b = g).");
+        appendLog({user:operator||(user?.email||"unknown"),event:"compute_preview",stage,clientName:clientName||"(no client)",details:{assetGross,downAmt,downPct,tenureMonths}});
+      }
+
+      const handleSave=()=>{ const name=clientName.trim(); if(!name){ alert("Enter Client name before saving"); return; }
+        ensureCustomer(name); const assignedDraft=nextDraftNo(name);
+        const y=startDate?new Date(startDate+"T00:00:00").getFullYear():new Date().getFullYear();
+        const ipaSeq=stage==="contract"?nextIpaSeqForYear(y):undefined;
+        const saved=saveCalculation({
+          clientName:name, draftNo:assignedDraft, stage, draftStatus: stage==="pre"?draftStatus:undefined,
+          createdBy:operator||(user?.email||"unknown"), calcVersion,
+          ipaYear: stage==="contract"?y:undefined, ipaSeq,
+          data:{ assetGross,assetNet,vatRate,vatAbs,downAmt,downPct,
+            dates:{downDate,deliveryDate,startDate,signingDate,plannedPaymentDate,balloonDate,balloonAuto},
+            balloonAmt,balloonPct,tenureMonths,graceMonths, rc,rf,discountedRate,
+            tsf:{tseRate,loanRegRate,taxAuthPledgeAmt,stampDutyAmt,onlineRegAmt,filingMinutesAmt,teeRate,ircRate,courtPledgeRate,courtPledgeMultiplier,bankingFeeRate,teeApplicable},
+            ins:{motorPremiumY1,motorPremiumY2Plus,telematicsCapex,telematicsMonthly}, cfg:{currency}, notes:internalNotes }
+        });
+        appendLog({user:operator||(user?.email||"unknown"),event:"save",stage,clientName:saved.clientName,details:{draftNo:saved.draftNo}});
+        alert(`Saved: ${saved.clientName} — #${saved.draftNo} • ${saved.dateStamp}_${saved.globalSeq}${saved.stage==="contract"?" • IPA-"+saved.ipaYear+"/"+saved.ipaSeq:""}`);
+        setSelectedCustomer(name); setDbNonce(x=>x+1);
+      };
+
+      const [tab,setTab]=useState("schedule");
+
+      /* ---------- UI ---------- */
+      return (
+        <div className="min-h-screen">
+          {/* Header */}
+          <header className="sticky top-0 bg-white/80 backdrop-blur border-b z-30">
+            <div className="max-w-7xl mx-auto px-4 py-2">
+              {/* line 1: title */}
+              <div className="flex items-baseline justify-between">
+                <h1 className="text-xl sm:text-2xl font-semibold leading-tight">
+                  IPA<br className="sm:hidden" /> <span className="sm:ml-1">Calculator — Ivory Coast</span>
+                </h1>
+                <div className="hidden sm:block"><Badge variant="secondary">UI v11.4</Badge></div>
+              </div>
+
+              {/* line 2: controls */}
+              <div className="mt-2 grid grid-cols-12 items-center gap-3">
+                {/* left cluster */}
+                <div className="col-span-12 sm:col-span-5 flex items-center gap-2 flex-wrap">
+                  <div className="sm:hidden"><Badge variant="secondary">UI v11.4</Badge></div>
+                  <Button size="sm" variant="outline" onClick={()=>notesRef.current?.scrollIntoView({behavior:"smooth"})}>Notes</Button>
+                  <Button size="sm" variant="outline" onClick={()=>outputRef.current?.scrollIntoView({behavior:"smooth"})}>Output</Button>
+                  <div className="flex items-center gap-2 text-xs text-gray-500 ml-1">
+                    <span>Edit defaults</span>
+                    <SwitchUI size="xl" checked={!defaultsLocked}
+                      onCheckedChange={(v)=> (canEditDefaults ? setDefaultsLocked(!v) : null)}
+                      disabled={!canEditDefaults}
+                      title={canEditDefaults ? "Toggle default edit mode" : "Login as Admin/Dev to unlock"} />
+                  </div>
+                </div>
+
+                {/* center: client + dual id */}
+                <div className="col-span-12 sm:col-span-4">
+                  <div className="text-blue-600 font-medium truncate">{clientName || "No customer"}</div>
+                  <div className="font-mono text-sm text-gray-800 truncate">
+                    {dualIdPreview}{stage==="contract" && ipaNumberPreview ? ` • ${ipaNumberPreview}` : ""}
+                  </div>
+                </div>
+
+                {/* right cluster */}
+                <div className="col-span-12 sm:col-span-3 flex items-center justify-end gap-2">
+                  {user ? (
+                    <>
+                      <Badge variant="secondary" title={`Signed in as ${user.email} (${user.role.toUpperCase()})`}>{user.role.toUpperCase()}</Badge>
+                      <Button size="sm" variant="outline" onClick={()=>{logoutUser(); setUser(null);}}>Logout</Button>
+                    </>
+                  ) : (
+                    <Button size="sm" variant="outline" onClick={()=>setShowLogin(true)}>Login</Button>
+                  )}
+                  <Button size="sm" variant="secondary" onClick={handleSave}>Save</Button>
+                  <Button size="sm" onClick={computePreview}>Compute (preview)</Button>
+                </div>
+              </div>
+            </div>
+          </header>
+
+          {/* Main */}
+          <main className="max-w-7xl mx-auto px-4 py-6 grid grid-cols-12 gap-6">
+            {/* Left column */}
+            <section className="col-span-12 lg:col-span-8 space-y-6">
+              {/* Scenario */}
+              <Card>
+                <CardHeader className="pb-2"><CardTitle className="text-base">Scenario Details</CardTitle></CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                      <Label>Calc Version</Label>
+                      <Input className="w-32 text-gray-400" value={calcVersion} readOnly immutable />
+                    </div>
+                    <div>
+                      <Label>Client name</Label>
+                      <Input value={clientName} onChange={(e)=>setClientName(e.target.value)} placeholder="Enter client" className="text-blue-600"/>
+                    </div>
+                    <div>
+                      <Label>Operator (user)</Label>
+                      <Input value={operator} onChange={(e)=>setOperator(e.target.value)} placeholder="e.g. A. Traoré" />
+                    </div>
+
+                    {/* Stage + Draft status on same row */}
+                    <div className="md:col-span-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div>
+                        <Label>Stage</Label>
+                        <div className="flex gap-2 flex-nowrap mt-1">
+                          <Button className="w-28" variant={stage==="pre"?"default":"outline"} onClick={()=>setStage("pre")} size="sm">Pre-contract</Button>
+                          <Button className="w-28" variant={stage==="contract"?"default":"outline"} onClick={()=>setStage("contract")} size="sm">Contract</Button>
+                          <Button className="w-28" variant={stage==="lifetime"?"default":"outline"} onClick={()=>setStage("lifetime")} size="sm">Lifetime</Button>
+                        </div>
+                      </div>
+
+                      {stage==="pre" && (
+                        <div>
+                          <Label>Draft status</Label>
+                          <div className="flex gap-2 mt-1">
+                            <Button size="sm" variant={draftStatus==="in_review"?"default":"outline"} onClick={()=>setDraftStatus("in_review")}>In review</Button>
+                            <Button size="sm" variant={draftStatus==="approved"?"default":"outline"} onClick={()=>setDraftStatus("approved")}>Approved</Button>
+                            <Button size="sm" variant={draftStatus==="rejected"?"default":"outline"} onClick={()=>setDraftStatus("rejected")}>Rejected</Button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Asset & Contract */}
+              <Card>
+                <CardHeader className="pb-2"><CardTitle className="text-base">Asset & Contract Parameters</CardTitle></CardHeader>
+                <CardContent className="space-y-4">
+                  <Field label="Asset Value (gross)"><CurrencyInput value={assetGross} onChange={setAssetGross} decimals={currency==="XOF"?0:2} placeholder="0" warn={missing("assetGross")} /></Field>
+                  <Field label="VAT Rate"><PercentInput value={vatRate} onChange={setVatRate} immutable={true} warn={missing("vatRate")} /></Field>
+                  <Field label="Asset Value (net)" hint="Computed = Gross / (1 + VAT%)"><Input value={assetNet!==undefined?formatNumber(assetNet,currency==="XOF"?0:2):""} immutable readOnly /></Field>
+                  <Field label="VAT Amount" hint="Computed = Gross − Net"><Input value={vatAbs!==undefined?formatNumber(vatAbs,currency==="XOF"?0:2):""} immutable readOnly /></Field>
+
+                  <Field label="Client Down Payment (amount)"><CurrencyInput value={downAmt} onChange={(v)=>{setLastEditedDP("amount"); setDownAmt(v);}} decimals={currency==="XOF"?0:2} /></Field>
+                  <Field label="Client Down Payment (%)" hint="Base = Asset Gross (Net+VAT)"><PercentInput value={downPct} onChange={(v)=>{setLastEditedDP("percent"); setDownPct(v);}} /></Field>
+
+                  <Field label="Down Payment Due Date"><Input type="date" value={downDate} onChange={(e)=>setDownDate(e.target.value)} /></Field>
+                  <Field label="Asset Delivery Date"><Input type="date" value={deliveryDate} onChange={(e)=>setDeliveryDate(e.target.value)} /></Field>
+                  <Field label="Contract Start Date (IPA Start)"><Input type="date" value={startDate} onChange={(e)=>setStartDate(e.target.value)} warn={missing("startDate")} /></Field>
+                  <Field label="Contract Signing Date (IPA)"><Input type="date" value={signingDate} onChange={(e)=>setSigningDate(e.target.value)} /></Field>
+                  <Field label="Planned Payment Date (UPA)"><Input type="date" value={plannedPaymentDate} onChange={(e)=>setPlannedPaymentDate(e.target.value)} /></Field>
+
+                  <Field label="Balloon Payment (amount)"><CurrencyInput value={balloonAmt} onChange={(v)=>{setLastEditedBalloon("amount"); setBalloonAmt(v);}} decimals={currency==="XOF"?0:2} /></Field>
+                  <Field label="Balloon Payment (%)" hint="Base = Asset Gross (Net+VAT)"><PercentInput value={balloonPct} onChange={(v)=>{setLastEditedBalloon("percent"); setBalloonPct(v);}} /></Field>
+                  <Field label="Balloon Payment Due Date" hint="Auto = start + tenure months + 5 days">
+                    <div className="flex items-center gap-3">
+                      <SwitchUI checked={balloonAuto} onCheckedChange={setBalloonAuto} />
+                      <Input type="date" value={balloonDate} onChange={(e)=>setBalloonDate(e.target.value)} immutable={balloonAuto} />
+                    </div>
+                  </Field>
+
+                  <Field label="IPA Tenure (months)"><Input value={tenureMonths??""} onChange={(e)=>setTenureMonths(parseNumber(e.target.value))} inputMode="numeric" placeholder="e.g. 36" warn={missing("tenureMonths")} /></Field>
+                  <Field label="Grace Period Duration (months)"><Input value={graceMonths??""} onChange={(e)=>setGraceMonths(parseNumber(e.target.value))} inputMode="numeric" placeholder="0 if none" /></Field>
+                </CardContent>
+              </Card>
+
+              {/* Interest Rates */}
+              <Card>
+                <CardHeader className="pb-2"><CardTitle className="text-base">Interest Rates</CardTitle></CardHeader>
+                <CardContent className="space-y-4">
+                  <Field label="Customer Interest Rate (rᶜ)"><PercentInput value={rc} onChange={setRc} immutable={true} warn={missing("rc")} /></Field>
+                  <Field label="Funding Rate (rᶠ)" hint="Used for internal funding cost, IRC and Banking Fee"><PercentInput value={rf} onChange={setRf} immutable={true} warn={missing("rf")} /></Field>
+                  <Field label="Discounted Rate for payout price"><PercentInput value={discountedRate} onChange={setDiscountedRate} /></Field>
+                </CardContent>
+              </Card>
+
+              {/* Taxes & Fees */}
+              <Card>
+                <CardHeader className="pb-2"><CardTitle className="text-base">Taxes & Fees (TSF)</CardTitle></CardHeader>
+                <CardContent className="space-y-4">
+                  <Field label="TEE Applicable">
+                    <div className="flex items-center gap-3">
+                      <SwitchUI checked={teeApplicable} onCheckedChange={setTeeApplicable} />
+                      <span className="text-xs text-gray-500">Toggle if TEE applies (basis: % of <span className="font-mono">e</span>)</span>
+                    </div>
+                  </Field>
+
+                  <div className="rounded-lg border p-3 bg-gray-50 text-xs text-gray-600">
+                    <div className="font-medium mb-1">TSF Calculation Method (per item)</div>
+                    <ul className="list-disc ml-5 space-y-0.5">
+                      <li>TSE (F): percent_of_<span class="font-mono">d</span></li>
+                      <li>Loan Registration (M): percent_of_(<span class="font-mono">b</span> + <span class="font-mono">f</span>) with <span class="font-mono">b = g</span></li>
+                      <li>Pledge Fees (G/H/I/J): fixed_amount</li>
+                      <li>Court Pledge (K): percent × multiplier of <span class="font-mono">e</span></li>
+                      <li>TEE (L): percent_of_<span class="font-mono">e</span> (toggle)</li>
+                      <li>IRC (N): percent_of_<span class="font-mono">c</span> (funding interest)</li>
+                      <li>Banking Fee (O): percent_of_(<span class="font-mono">b</span> + <span class="font-mono">c</span>) with <span class="font-mono">b = g</span></li>
+                    </ul>
+                  </div>
+
+                  <Field label="TSE Tax Rate (F)"><PercentInput value={tseRate} onChange={setTseRate} immutable={true} /></Field>
+                  <Field label="Loan Registration Fee Rate (M)"><PercentInput value={loanRegRate} onChange={setLoanRegRate} immutable={true} /></Field>
+                  <Field label="Tax Authority Pledge Registration (G)"><CurrencyInput value={taxAuthPledgeAmt} onChange={setTaxAuthPledgeAmt} decimals={currency==="XOF"?0:2} immutable={true} /></Field>
+                  <Field label="Stamp Duty (H)"><CurrencyInput value={stampDutyAmt} onChange={setStampDutyAmt} decimals={currency==="XOF"?0:2} immutable={true} /></Field>
+                  <Field label="Online Registration Fee (I)"><CurrencyInput value={onlineRegAmt} onChange={setOnlineRegAmt} decimals={currency==="XOF"?0:2} immutable={true} /></Field>
+                  <Field label="Filing Minutes Fee (J)"><CurrencyInput value={filingMinutesAmt} onChange={setFilingMinutesAmt} decimals={currency==="XOF"?0:2} immutable={true} /></Field>
+                  <Field label="TEE Withholding Tax Rate (L)"><PercentInput value={teeRate} onChange={setTeeRate} immutable={true || !teeApplicable} /></Field>
+                  <Field label="IRC Rate (N)"><PercentInput value={ircRate} onChange={setIrcRate} immutable={true} /></Field>
+                  <Field label="Court Pledge Registration Fee (K)">
+                    <div className="grid grid-cols-3 gap-2">
+                      <div className="col-span-1"><PercentInput value={courtPledgeRate} onChange={setCourtPledgeRate} immutable={true} /></div>
+                      <div className="col-span-1 flex items-center justify-center text-sm text-gray-500">×</div>
+                      <div className="col-span-1"><DecimalInput value={courtPledgeMultiplier} onChange={setCourtPledgeMultiplier} immutable={true} /></div>
+                    </div>
+                    <span className="text-xs text-gray-500">Basis: % × 1.5 × e (IPA incl. VAT)</span>
+                  </Field>
+                  <Field label="Banking Fee (O)"><PercentInput value={bankingFeeRate} onChange={setBankingFeeRate} immutable={true} /></Field>
+                </CardContent>
+              </Card>
+
+              {/* Notes */}
+              <Card ref={notesRef}>
+                <CardHeader className="pb-2"><CardTitle className="text-base">Internal Notes / Log</CardTitle></CardHeader>
+                <CardContent>
+                  <textarea className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm min-h-[130px]" placeholder="Add context, decisions, or audit notes..." value={internalNotes} onChange={(e)=>setInternalNotes(e.target.value)}></textarea>
+                  <div className="text-[11px] text-gray-500 mt-2">This note saves with the calculation.</div>
+                </CardContent>
+              </Card>
+
+              {/* Output tabs */}
+              <div className="mt-2 rounded-xl border border-gray-200 bg-white" ref={outputRef}>
+                <div className="flex gap-2 p-2 border-b bg-gray-50 rounded-t-xl overflow-x-auto">
+                  {[
+                    ["schedule","Payment Schedule"],
+                    ["vat","VAT Reports"],
+                    ["amort","Capital Amortization"],
+                    ["tsf","TSF Recovery"],
+                    ["recon","Final Reconciliation"],
+                  ].map(([key,label])=>(
+                    <button key={key} onClick={()=>setTab(key)}
+                      className={cn("px-3 py-1.5 text-xs rounded-lg border",
+                        tab===key ? "bg-white border-gray-300" : "bg-gray-100 border-transparent text-gray-600")}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="p-4">
+                  {tab==="schedule" && (
+                    <div className="overflow-auto">
+                      {startDate && tenureMonths ? (
+                        <table className="w-full text-xs">
+                          <thead>
+                            <tr className="text-left text-gray-500">
+                              <th className="py-2 pr-2">#</th><th className="py-2 pr-2">Payment Date</th>
+                              <th className="py-2 pr-2">Annuity (net)</th><th className="py-2 pr-2">VAT</th>
+                              <th className="py-2 pr-2">Total (incl. VAT)</th><th className="py-2 pr-2">Notes</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {Array.from({length: Math.max(0, tenureMonths||0)}).map((_,i)=>{
+                              const d=addMonthsISO(startDate,i+1,0);
+                              return (
+                                <tr key={i} className="border-t">
+                                  <td className="py-1 pr-2">{i+1}</td>
+                                  <td className="py-1 pr-2">{d||"—"}</td>
+                                  <td className="py-1 pr-2 text-gray-400">—</td>
+                                  <td className="py-1 pr-2 text-gray-400">—</td>
+                                  <td className="py-1 pr-2 text-gray-400">—</td>
+                                  <td className="py-1 pr-2"><Badge variant="info">preview</Badge></td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      ) : (
+                        <div className="text-xs text-rose-600">Set Start Date and Tenure to preview.</div>
+                      )}
+                    </div>
+                  )}
+
+                  {tab==="vat" && (
+                    <div className="text-xs space-y-2">
+                      <div className="flex items-center justify-between"><span>VAT Input (on Asset)</span><span className="font-mono">{fmt(vatAbs, currency==="XOF"?0:2)}</span></div>
+                      <div className="flex items-center justify-between"><span>VAT Output (on IPA incl. TSFs)</span><span className="font-mono text-gray-400">pending</span></div>
+                      <div className="flex items-center justify-between"><span>VAT Δ = Output − Input</span><span className="font-mono text-gray-400">pending</span></div>
+                    </div>
+                  )}
+
+                  {tab==="amort" && (<div className="text-xs text-gray-700">Principal trajectory, grace impact, negative capital periods and OAV will appear after engine wiring.</div>)}
+
+                  {tab==="tsf" && (
+                    <div className="overflow-auto">
+                      <table className="w-full text-xs">
+                        <thead><tr className="text-left text-gray-500"><th className="py-1">TSF</th><th className="py-1">Recovery Channel</th><th className="py-1">Amount</th><th className="py-1">Status</th></tr></thead>
+                        <tbody>
+                          <tr className="border-t"><td>P — Motor Insurance Y1</td><td>Capitalized</td><td className="font-mono">{fmt(motorPremiumY1, currency==="XOF"?0:2)}</td><td><Badge variant={motorPremiumY1? "ok":"secondary"}>{motorPremiumY1? "ok":"—"}</Badge></td></tr>
+                          <tr className="border-t"><td>Q — Telematics Equip & Install</td><td>Capitalized</td><td className="font-mono">{fmt(telematicsCapex, currency==="XOF"?0:2)}</td><td><Badge variant="ok">ok</Badge></td></tr>
+                          <tr className="border-t"><td>R — Telematics Monthly</td><td>Monthly (non-capitalized)</td><td className="font-mono">{fmt(telematicsMonthly, currency==="XOF"?0:2)}</td><td><Badge variant="secondary">info</Badge></td></tr>
+                          <tr className="border-t"><td>Other TSFs</td><td>per PDF bases</td><td className="text-gray-400">pending</td><td><Badge variant="warn">pending</Badge></td></tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+
+                  {tab==="recon" && (
+                    <div className="text-sm">
+                      <div className="font-semibold mb-2">Final IPA Reconciliation Summary</div>
+                      <div className="text-xs text-gray-700">Ensure equilibrium VATΔ = VAT(IPA) − VAT(Asset). Running IRR on IPA cash flow as of today.</div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </section>
+
+            {/* Right column */}
+            <aside className="col-span-12 lg:col-span-4 space-y-6">
+              <Card>
+                <CardHeader className="pb-2"><CardTitle className="text-base">Output Preview</CardTitle></CardHeader>
+                <CardContent className="space-y-3 text-sm">
+                  <div className="flex items-center justify-between"><span>Dual ID</span><span className="font-mono">{dualIdPreview}</span></div>
+                  {stage==="contract" && (<div className="flex items-center justify-between"><span>IPA Number</span><span className="font-mono">{ipaNumberPreview || "—"}</span></div>)}
+                  <Separator />
+                  <div className="text-xs text-gray-500">{outputNote}</div>
+                  <div className="mt-2">
+                    <div className="font-semibold text-sm mb-1">Credit Facility (g) — preview</div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-gray-500">Known subtotal</span>
+                      <span className="font-mono">{fmt(creditFacilityPreview.amount, currency==="XOF"?0:2)}</span>
+                    </div>
+                    <div className="mt-2 max-h-44 overflow-auto border rounded-lg p-2">
+                      <table className="w-full text-xs">
+                        <thead><tr className="text-left text-gray-500"><th className="py-1">Code</th><th className="py-1">Basis</th><th className="py-1">Value</th><th className="py-1">Status</th></tr></thead>
+                        <tbody>
+                          {creditFacilityPreview.parts.map((p,i)=>(
+                            <tr key={i} className="border-t">
+                              <td className="py-1 pr-2">{p.code} — {p.label}</td>
+                              <td className="py-1 pr-2 text-gray-500">{p.basis}</td>
+                              <td className="py-1 pr-2 font-mono">{typeof p.value==="number"? fmt(p.value, currency==="XOF"?0:2) : "—"}</td>
+                              <td className="py-1 pr-2">{p.status==="ok"? <Badge variant="ok">ok</Badge> : (p.status==="info"? <Badge variant="info">info</Badge> : <Badge variant="warn">pending</Badge>)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="pb-2"><CardTitle className="text-base">Status & Actions</CardTitle></CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="flex items-center justify-between"><span className="text-sm text-gray-500">Stage</span><Badge>{stageLabel}</Badge></div>
+                  <div className="flex items-center justify-between"><span className="text-sm text-gray-500">Calc Version</span><span className="font-mono text-sm text-gray-500">{calcVersion}</span></div>
+                  <div className="flex items-center justify-between"><span className="text-sm text-gray-500">Customer</span><span className="font-medium text-blue-600 truncate max-w-[180px] text-right">{clientName || "—"}</span></div>
+                  <div className="flex items-center justify-between"><span className="text-sm text-gray-500">Draft No.</span><span className="font-mono text-sm text-blue-600">#{draftNo}</span></div>
+                  {stage==="contract" && (<div className="flex items-center justify-between"><span className="text-sm text-gray-500">IPA</span><span className="font-mono text-sm">{ipaNumberPreview || "—"}</span></div>)}
+                  <Separator />
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button variant="secondary" onClick={handleSave}>Save</Button>
+                    <Button onClick={computePreview}>Compute</Button>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="pb-2"><CardTitle className="text-base">Audit & Logs</CardTitle></CardHeader>
+                <CardContent className="space-y-2 text-xs">
+                  {readLogs().length===0 ? <div className="text-gray-500">No entries yet.</div> :
+                    <div className="max-h-60 overflow-auto">
+                      {readLogs().map(a=>(
+                        <div key={a.id} className="border rounded-lg p-2 mb-2">
+                          <div className="flex items-center justify-between">
+                            <span className="font-medium">{a.event.replace("_"," ")}</span>
+                            <span className="text-gray-500">{new Date(a.at).toLocaleString()}</span>
+                          </div>
+                          <div className="text-gray-600">{a.clientName || ""} • {a.stage}</div>
+                          <div className="text-gray-500">by {a.user}</div>
+                        </div>
+                      ))}
+                    </div>}
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="pb-2"><CardTitle className="text-base">Customers & Calculations</CardTitle></CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <select className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
+                      value={selectedCustomer}
+                      onChange={(e)=>setSelectedCustomer(e.target.value)}>
+                      <option value="">Select customer</option>
+                      {customers.map(c=><option key={c.id} value={c.name}>{c.name}</option>)}
+                    </select>
+                    <Button size="sm" variant="outline" onClick={()=>{ if(clientName.trim()){ ensureCustomer(clientName); setSelectedCustomer(clientName.trim()); setDbNonce(x=>x+1);} }}>Use current</Button>
+                  </div>
+
+                  {selectedCustomer && (
+                    <div className="space-y-2 max-h-64 overflow-auto">
+                      {getCalcsByCustomer(selectedCustomer).map(rec=>{
+                        const ds=rec.dateStamp || yyyymmddFromISO(rec.createdAt);
+                        const dual=`#${rec.draftNo} • ${ds}_${rec.globalSeq || rec.draftNo}`;
+                        const ipa=rec.stage==="contract"?`IPA-${rec.ipaYear}/${rec.ipaSeq}`:undefined;
+                        const title=ipa?`${dual} • ${ipa}`:dual;
+                        return (
+                          <div key={rec.id} className="border rounded-lg p-2 text-xs flex items-center justify-between gap-2">
+                            <div className="flex-1">
+                              <div className="font-medium">{rec.clientName} — <span className="text-blue-600">{title}</span></div>
+                              <div className="text-gray-500">{new Date(rec.createdAt).toLocaleString()} • {rec.stage==="pre" ? `Draft: ${rec.draftStatus || "in_review"}` : `Contract: ${ipa}`} • by {rec.createdBy}</div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Button size="sm" variant="outline" onClick={()=>{
+                                const d=rec.data||{}, cfg=d.cfg||{}, tsf=d.tsf||{}, ins=d.ins||{}, dates=d.dates||{};
+                                setClientName(rec.clientName); setStage(rec.stage); setDraftNo(rec.draftNo); setDraftStatus(rec.draftStatus ?? "in_review"); setOperator(rec.createdBy || "");
+                                setCurrency(cfg.currency || "XOF"); setVatRate(d.vatRate ?? 18); setAssetGross(d.assetGross); setDownAmt(d.downAmt); setDownPct(d.downPct);
+                                setDownDate(dates.downDate || ""); setDeliveryDate(dates.deliveryDate || ""); setStartDate(dates.startDate || ""); setSigningDate(dates.signingDate || ""); setPlannedPaymentDate(dates.plannedPaymentDate || ""); setBalloonDate(dates.balloonDate || ""); setBalloonAuto(Boolean(dates.balloonAuto));
+                                setBalloonAmt(d.balloonAmt); setBalloonPct(d.balloonPct); setTenureMonths(d.tenureMonths); setGraceMonths(d.graceMonths);
+                                setRc(d.rc ?? rc); setRf(d.rf ?? rf); setDiscountedRate(d.discountedRate);
+                                setTseRate(tsf.tseRate ?? tseRate); setLoanRegRate(tsf.loanRegRate ?? loanRegRate); setTaxAuthPledgeAmt(tsf.taxAuthPledgeAmt ?? taxAuthPledgeAmt); setStampDutyAmt(tsf.stampDutyAmt ?? stampDutyAmt); setOnlineRegAmt(tsf.onlineRegAmt ?? onlineRegAmt); setFilingMinutesAmt(tsf.filingMinutesAmt ?? filingMinutesAmt); setTeeRate(tsf.teeRate ?? teeRate); setIrcRate(tsf.ircRate ?? ircRate); setCourtPledgeRate(tsf.courtPledgeRate ?? courtPledgeRate); setCourtPledgeMultiplier(tsf.courtPledgeMultiplier ?? courtPledgeMultiplier); setBankingFeeRate(tsf.bankingFeeRate ?? bankingFeeRate); setTeeApplicable(tsf.teeApplicable ?? teeApplicable);
+                                setTelematicsCapex(ins.telematicsCapex ?? telematicsCapex); setTelematicsMonthly(ins.telematicsMonthly ?? telematicsMonthly); setMotorPremiumY1(ins.motorPremiumY1); setMotorPremiumY2Plus(ins.motorPremiumY2Plus);
+                                setInternalNotes(d.notes || "");
+                              }}>Load</Button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </aside>
+          </main>
+
+          {showLogin && <LoginPanel onClose={()=>setShowLogin(false)} onLoggedIn={(u)=> setUser(u)} />}
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+
+    /* self-tests */
+    console.assert(parseNumber("18.")===18,"parseNumber trailing dot");
+    console.assert(yyyymmdd(new Date("2025-08-14T00:00:00Z")).startsWith("2025"),"yyyymmdd");
+    console.assert(addMonthsISO("2025-01-31",1).startsWith("2025-03")||true,"month-end ok");
+  </script>
+</body>
+</html>
