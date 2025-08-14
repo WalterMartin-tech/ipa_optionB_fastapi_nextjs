@@ -20,7 +20,13 @@
       {
         "name": "next"
       }
+<<<<<<< HEAD
     ]
+||||||| (empty tree)
+=======
+    ],
+    "target": "ES2017"
+>>>>>>> 2fd963e (chore: Koyeb Procfile/runtime, env-driven CORS, frontend .envs, calc engine & tests)
   },
   "include": [
     "next-env.d.ts",

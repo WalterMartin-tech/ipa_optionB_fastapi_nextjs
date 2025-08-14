@@ -2,4 +2,9 @@
   "compilerOptions": {
     "baseUrl": "."
   }
+<<<<<<< HEAD
 }
+||||||| (empty tree)
+=======
+}
+>>>>>>> 2fd963e (chore: Koyeb Procfile/runtime, env-driven CORS, frontend .envs, calc engine & tests)

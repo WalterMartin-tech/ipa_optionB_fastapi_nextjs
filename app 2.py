@@ -3,11 +3,7 @@ from backend.app import app  # re-export the FastAPI instance
 # Optional debug handler (only active if DEBUG_ERRORS=1 and debug_errors.py exists)
 try:
     from debug_errors import setup as setup_debug  # root helper
-<<<<<<< HEAD
-||||||| (empty tree)
-=======
 
->>>>>>> 2fd963e (chore: Koyeb Procfile/runtime, env-driven CORS, frontend .envs, calc engine & tests)
     setup_debug(app)
 except Exception:
     pass

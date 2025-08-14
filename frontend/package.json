@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+<<<<<<< HEAD
     "start": "next start"
   },
   "dependencies": {
@@ -15,6 +16,23 @@
   "devDependencies": {
     "@types/node": "24.2.1",
     "@types/react": "19.1.9",
+||||||| (empty tree)
+=======
+    "start": "next start",
+    "format": "prettier --write .",
+    "prepare": "husky"
+  },
+  "dependencies": {
+    "next": "^15.4.6",
+    "react": "19.1.1",
+    "react-dom": "19.1.1"
+  },
+  "devDependencies": {
+    "@types/node": "24.2.1",
+    "@types/react": "19.1.10",
+    "husky": "^9.1.7",
+    "prettier": "^3.6.2",
+>>>>>>> 2fd963e (chore: Koyeb Procfile/runtime, env-driven CORS, frontend .envs, calc engine & tests)
     "typescript": "5.9.2"
   }
 }
