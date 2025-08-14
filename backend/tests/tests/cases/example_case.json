@@ -1,4 +1,0 @@
-{
-  "input": {"principal": 100000, "rate": 0.12, "term_months": 24},
-  "expected_totals": {"example_metric": 123.45, "another": 67.89}
-}

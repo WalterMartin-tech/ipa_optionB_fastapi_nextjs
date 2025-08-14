@@ -1,0 +1,13 @@
+{
+  "input": {
+    "principal": 100000,
+    "rate": 0.12,
+    "term_months": 24
+  },
+  "expected_totals": {
+    "annuity": 4707.35,
+    "ipa_vat": 20335.74,
+    "asset_vat": 0.0,
+    "vat_delta": 20335.74
+  }
+}

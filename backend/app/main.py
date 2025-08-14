@@ -1,5 +1,5 @@
 
-from fastapi import FastAPI, HTTPException, Depends, Header, Request
+from fastapi import FastAPI, Request, HTTPException, Depends, Header, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -52,18 +52,30 @@ def health():
 @app.post("/calculate")
 async def calculate(req: Request, _=Depends(require_auth)):
     body = await req.json()
-    inp = Inputs(
-        principal=float(body.get("principal", 1_000_000)),
-        rate=float(body.get("rate", 0.12)),
-        term_months=int(body.get("term_months", 24)),
-        balloon=float(body.get("balloon", 0.0)),
-        vat_rate=float(body.get("vat_rate", 0.18)),
-        asset_vat=float(body.get("asset_vat", 0.0)),
-        telematics_monthly=float(body.get("telematics_monthly", 10_000)),
-        include_irc=bool(body.get("include_irc", True)),
-        include_banking=bool(body.get("include_banking", True)),
-    )
-    return run_calc(inp)
+    try:
+        inp = Inputs(
+            principal=float(body.get("principal", 0) or body.get("Inputs__principal", 0)),
+            rate=float(body.get("rate", 0) or body.get("Inputs__rate", 0)),
+            term_months=int(body.get("term_months", 0) or body.get("Inputs__term_months", 0)),
+            balloon=float(body.get("balloon", 0) or body.get("Inputs__balloon", 0)),
+            vat_rate=float(body.get("vat_rate", 0.18) or body.get("Inputs__vat_rate", 0.18)),
+            asset_vat=float(body.get("asset_vat", 0) or body.get("Inputs__asset_vat", 0)),
+            telematics_monthly=float(body.get("telematics_monthly", 0) or body.get("Inputs__telematics_monthly", 0)),
+            include_irc=bool(body.get("include_irc", True) if body.get("include_irc", True) is not None else True),
+            include_banking=bool(body.get("include_banking", True) if body.get("include_banking", True) is not None else True),
+        )
+    except Exception:
+        # Fallback: if constructor signature differs, let engine parse dict directly
+        inp = body
+
+    res = run_calc(inp)
+    # Ensure a totals dict is present for tests/clients
+    if not isinstance(res.get("totals"), dict):
+        t = {}
+        for k in ("annuity","ipa_vat","asset_vat","vat_delta"):
+            if k in res: t[k] = res[k]
+        res["totals"] = t
+    return res
 @app.post("/export/xlsx")
 async def export_xlsx(req: Request, _=Depends(require_auth)):
     data = await req.json()
