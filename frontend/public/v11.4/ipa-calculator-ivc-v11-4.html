@@ -704,5 +704,19 @@
     console.assert(yyyymmdd(new Date("2025-08-14T00:00:00Z")).startsWith("2025"),"yyyymmdd");
     console.assert(addMonthsISO("2025-01-31",1).startsWith("2025-03")||true,"month-end ok");
   </script>
+
+<div id="eq-summary" style="position:fixed;right:12px;bottom:12px;z-index:9999;padding:10px 12px;background:#0b1021;color:#fff;border-radius:12px;box-shadow:0 6px 18px rgba(0,0,0,.25);font:14px/1.2 -apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Arial,sans-serif;max-width:360px;display:none"></div>
+<script>
+(function(){const box=document.getElementById('eq-summary');
+function showEq(eq){if(!eq)return; box.style.display='block';
+ box.innerHTML='<b>Equilibrium</b><br>'+
+ 'vat_ipa: '+(eq.vat_ipa??'-')+'<br>'+
+ 'vat_asset: '+(eq.vat_asset??'-')+'<br>'+
+ 'f_solved: '+(eq.f_solved??'-')+'<br>'+
+ 'ok: '+(eq.ok??'-')+(eq.error_abs!=null?(' (err '+eq.error_abs+')'):'')+
+ (eq.method?('<br><span style="opacity:.7">method: '+eq.method+'</span>'):'');}
+const origFetch=window.fetch.bind(window);
+window.fetch=async function(i,n){const r=await origFetch(i,n);try{const u=(typeof i==='string')?i:(i&&i.url)||'';if(u.includes('/calculate')){const c=r.clone();const d=await c.json().catch(()=>null);if(d&&d.equilibrium){showEq(d.equilibrium);}}}catch(e){}return r;};})();
+</script>
 </body>
 </html>
